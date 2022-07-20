@@ -1,0 +1,413 @@
+/**Flying Camera Route Tool NL2 Script**
+	Author: Red-Thirten
+	Date: 7/18/2022
+	License: GNU GPLv3 - See LICENSE for more details.
+	Description: 	Allows the user to setup and manage multiple camera waypoints based on their viewpoint during runtime
+					that they can later fly through for video recording purposes.
+*/
+
+import com.nolimitscoaster.Script;
+import com.nolimitscoaster.SceneObject;
+import com.nolimitscoaster.SceneObjectElement;
+import com.nolimitscoaster.ExternalRideView;
+import com.nolimitscoaster.TrackTrigger;
+import com.nolimitscoaster.TrackTriggerListener;
+import com.nolimitscoaster.Train;
+import com.nolimitscoaster.Button;
+import com.nolimitscoaster.Tools;
+import nlvm.lang.Boolean;
+import nlvm.lang.Double;
+import nlvm.lang.Math;
+import nlvm.math3d.Matrix4x4f;
+import nlvm.math3d.Vector3f;
+import nlvm.math3d.Vector4f;
+import nlvm.util.Vector;
+
+import util.Matrix4x4fMath;
+import util.RayCast;
+
+public class FlyingCameraRouteTool extends Script implements TrackTriggerListener{
+	protected String SCRIPT_NAME = "Flying Camera Route Tool";						// Script name for debugging
+	protected String CAMERA_ELEM_PREFIX = "camera";									// Prefix of camera element names
+	protected String COUNTDOWN_ELEM_NAME = "countdown";								// Name of countdown element
+	private static final float CLICK_TIMEOUT = 0.25f;								// Time before accepting another key press (ie. key is held down)
+	private static final Vector4f START_COLOR = new Vector4f(0.f, 0.9f, 0.f, 1.f);	// Color of the start preview camera
+	private static final Vector4f HARD_COLOR = new Vector4f(0.75f, 0.f, 1.f, 1.f);	// Color of hard waypoint preview cameras
+	private static final Vector4f SOFT_COLOR = new Vector4f(0.f, 0.75f, 1.f, 1.f);	// Color of soft waypoint preview cameras
+	private float FLY_TIME_INCR = 1.f;												// Default fly time increment (gets set once during init)
+	private float ROTATE_TIMEOUT = 0.001f;											// Default time before accepting another key press for rotation (gets set once during init)
+	private float ROTATION_INCR = (float) Math.toRadians(2);						// Default rotation increment in radians (gets set once during init)
+	private Matrix4x4f ORIGIN = new Matrix4x4f();									// Origin matrix (gets initialized once during init)
+	
+	private SceneObject sco;
+	private SceneObjectElement cameraStart, cameraA, cameraB, countdown;
+	private ExternalRideView flyView;
+	private RayCast rayStart, rayA, rayB;
+	private Vector waypoints = new Vector();
+	private Matrix4x4f curCameraMatrix = new Matrix4x4f();
+	private Matrix4x4f prevCameraMatrix = new Matrix4x4f();
+	private TrackTrigger coasterTrigger;
+	
+	private int curPreview = -1;
+	private int curWaypoint;
+	private float timer = 0.f;
+	private float flyTime = 3.f;
+	private float[] flyTimes;
+	private bool clicked, rotate, flying, preflight, postflight, skipCountdown, waitForTrigger, averageFlyTimes, firstInstructionsPrinted = false;
+	
+	public bool onInit(){ // On initialization of Play simulation
+		// Make sure only one tool is placed
+		SceneObject[] scos = sim.getSceneObjectsWithName(SCRIPT_NAME);
+		if (scos.length != 1){
+			System.err.println(SCRIPT_NAME + ":\n\tOnly place ONE tool object in the editor, and make sure it is named \"" + SCRIPT_NAME + "\".");
+			return false;
+		}
+		// Get and assign local SCO
+		sco = getScoFromParentEntity();
+		// Get fly time increment value from parameter
+		Double flyTimeIncrParam = sco.getDoubleParameter("fly_time_incr");
+		if (flyTimeIncrParam != null) FLY_TIME_INCR = Math.abs(flyTimeIncrParam.floatValue());
+		// Get skip countdown param
+		Boolean skipCountdownParam = sco.getBooleanParameter("skip_countdown");
+		if (skipCountdownParam != null) skipCountdown = skipCountdownParam.boolValue();
+		// Get rotation increment value from parameter
+		Double rotationIncrParam = sco.getDoubleParameter("rotation_incr");
+		if (rotationIncrParam != null && rotationIncrParam.floatValue() != 0){
+			ROTATE_TIMEOUT = CLICK_TIMEOUT;
+			ROTATION_INCR = (float) Math.toRadians(Math.abs(rotationIncrParam.doubleValue()));
+		}
+		// Get coaster trigger from parameter if specified
+		coasterTrigger = sco.getTrackTriggerParameter("coaster_trigger");
+		if (coasterTrigger != null) coasterTrigger.addTrackTriggerListener(this);
+		// Get and assign SCO elements
+		cameraStart = getElementOnScoForName(sco, CAMERA_ELEM_PREFIX + 0);
+		rayStart = new RayCast(cameraStart);
+		cameraA = getElementOnScoForName(sco, CAMERA_ELEM_PREFIX + 1);
+		rayA = new RayCast(cameraA);
+		cameraB = getElementOnScoForName(sco, CAMERA_ELEM_PREFIX + 2);
+		rayB = new RayCast(cameraB);
+		countdown = getElementOnScoForName(sco, COUNTDOWN_ELEM_NAME);
+		// Setup External Ride View
+		flyView = sim.createExternalRideView();
+		flyView.setLabel(SCRIPT_NAME);
+		flyView.setMorphingEnabled(false);
+		// Setup start camera element
+		cameraStart.setEntityColor(START_COLOR);
+		cameraStart.setTextureAnimationIndex(0);
+		// Move SCO to the world origin to allow SCO Elements to be moved absolutely
+		ORIGIN.initIdentity();
+		sco.setMatrix(ORIGIN);
+		sco.setElementsVisible(false);
+		return true;
+	}
+	
+	private SceneObject getScoFromParentEntity(){ // Returns the SceneObject via the parent entity ID with error handling
+		SceneObject sco = sim.getSceneObjectForEntityId(getParentEntityId());
+		if (sco == null){
+			System.throwRuntimeException(SCRIPT_NAME + ": This script only works with NL2 scene objects");
+		}
+		return sco;
+	}
+	
+	private SceneObjectElement getElementOnScoForName(SceneObject sco, String name){ // Basically getElementForName() with error handling - Gratz to bestdani for idea
+        SceneObjectElement element = sco.getElementForName(name);
+        if (element == null){
+            System.throwRuntimeException(SCRIPT_NAME + ": Wrong 3d model loaded (Cannot find \"" + name + "\" element)");
+        }
+        return element;
+    }
+	
+	private void printInstructions(){ // Prints instructions and current settings to the console
+		String averageFlyTimesStr = (averageFlyTimes) ? "On" : "Off";
+		System.err.println("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n");
+		System.out.println("\t\t\t" + SCRIPT_NAME + "  |  Fly Time: " + flyTime + "  |  Average Fly Times: " + averageFlyTimesStr);
+		System.out.println("=====================================================");
+		System.out.println("| Place Hard Waypoint: " + btnStr("c") + "  |  Place Soft Waypoint: " + btnStr("v") + "  |  Delete All Waypoints: " + btnStr("ctrl") + " + " + btnStr("t"));
+		System.out.println("| Delete last Waypoint: " + btnStr("t") + "  |  Delete specific Waypoint: Look at + " + btnStr("t"));
+		System.out.println("| Cycle preview cameras: " + btnStr("ctrl") + " + " + btnStr("c") + " or " + btnStr("v") + "  |  Roll Waypoint: Look at + " + btnStr("shift") + " + " + btnStr("c") + " or " + btnStr("v"));
+		System.out.println("| Change Fly Time between Waypoints: " + btnStr("ctrl") + " + " + btnStr("shift") + " + " + btnStr("c") + " or " + btnStr("v"));
+		System.out.println("| Toggle Averaging of Fly Times: " + btnStr("ctrl") + " + " + btnStr("shift") + " + " + btnStr("t"));
+		System.out.println("========== (Remember to close this console before recording) ==========");
+	}
+	
+	private String btnStr(String keyNameDefault){ // Given the default key name, returns the assigned keys/buttons as a string
+		int button = -1;
+		if (keyNameDefault.equals("c")) button = Button.NEXT_CAR;
+		else if (keyNameDefault.equals("v")) button = Button.NEXT_SEAT;
+		else if (keyNameDefault.equals("t")) button = Button.NEXT_TRAIN;
+		else if (keyNameDefault.equals("ctrl")) button = Button.FLY_SLOWER;
+		else if (keyNameDefault.equals("shift")) button = Button.FLY_FASTER;
+		return Button.getAssignedKeyString(button);
+	}
+	
+	private void updatePreviewCameras(){ // Runs every frame to update preview cameras that need to be on screen
+		sco.setElementsVisible(false);
+		if (waypoints.size() >= 3){
+			setPreviewCameraProperties(cameraA, rayA, (Matrix4x4f) waypoints.elementAt(curPreview - 1), true);
+		}
+		if (waypoints.size() >= 2){
+			setPreviewCameraProperties(cameraB, rayB, (Matrix4x4f) waypoints.elementAt(curPreview), true);
+		}
+		if (waypoints.size() >= 1){
+			setPreviewCameraProperties(cameraStart, rayStart, (Matrix4x4f) waypoints.elementAt(0), true);
+			flyView.setEnterWarpPoint(cameraStart.getAbsoluteTranslation(), 1.f); // Update fly view start properties
+			curCameraMatrix = cameraStart.getAbsoluteMatrix();
+			flyView.setCameraMatrix(curCameraMatrix);
+		}
+	}
+	
+	private void setPreviewCameraProperties(SceneObjectElement camera, RayCast ray, Matrix4x4f matrix, bool visible){ // Updates the position, visibility, type, and ray of a given preview camera element
+		camera.setMatrix(matrix); // Set position
+		camera.setVisible(visible); // Set visibility
+		ray.setPlanePoint(matrix.getTrans()); // Set ray
+		if ( camera.getName().equals(CAMERA_ELEM_PREFIX + "0") ) return; // Start camera element is static in type
+		else if ( isWaypointSoft(matrix) ){ // Set color and indicator of camera based on type and preview position
+			camera.setEntityColor(SOFT_COLOR);
+			if ( camera.getName().equals(CAMERA_ELEM_PREFIX + "1") ){
+				camera.setTextureAnimationIndex(3);
+			}
+			else{
+				camera.setTextureAnimationIndex(4);
+			}
+		}
+		else{
+			camera.setEntityColor(HARD_COLOR);
+			if ( camera.getName().equals(CAMERA_ELEM_PREFIX + "1") ){
+				camera.setTextureAnimationIndex(1);
+			}
+			else{
+				camera.setTextureAnimationIndex(2);
+			}
+		}
+	}
+	
+	private bool isWaypointSoft(Matrix4x4f matrix){ // Returns if a waypoint matrix is soft
+		return (matrix.elemAt(0,3) == 1.f) ? true : false;
+	}
+	
+	private int getIndexOfWaypointInView(bool getLastIfNoView){ // Returns the index of the waypoint in view, or, if none in view, the last index or -1 depending on the passed boolean
+		if ( rayStart.isViewerLookingAt(0.5f) ){
+			return 0;
+		}
+		else if ( rayA.isViewerLookingAt(0.5f) ){
+			return curPreview - 1;
+		}
+		else if ( rayB.isViewerLookingAt(0.5f) ){
+			return curPreview;
+		}
+		else if (getLastIfNoView){
+			return waypoints.size() - 1;
+		}
+		else{
+			return -1;
+		}
+	}
+	
+	public void onTrainEntering(TrackTrigger trigger, Train train){
+		if (trigger == coasterTrigger){
+			waitForTrigger = false;
+		}
+	}
+	
+	public void onTrainLeaving(TrackTrigger trigger, Train train){
+		// Do nothing, but method still needs to be present
+	}
+	
+	public void onNextFrame(float tick){
+		/* Button Press Handling */
+		if (!firstInstructionsPrinted){ // Prints the instructions after 1 sec.
+			if (timer >= 1.f){
+				timer = 0.f;
+				printInstructions();
+				firstInstructionsPrinted = true;
+			}
+			timer = timer + tick;
+		}
+		else if (clicked){ // Button press timeout
+			if (timer >= CLICK_TIMEOUT){
+				timer = 0.f;
+				clicked = false;
+			}
+			timer = timer + tick;
+		}
+		else if (rotate){ // Rotate button timeout
+			if (timer >= ROTATE_TIMEOUT){
+				timer = 0.f;
+				rotate = false;
+			}
+			timer = timer + tick;
+		}
+		else if ( Button.isPressed(Button.NEXT_CAR) || Button.isPressed(Button.NEXT_SEAT) ){ // If C or V is pressed...
+			if ( Button.isPressed(Button.FLY_SLOWER) ){ // If Ctrl is pressed...
+				clicked = true;
+				if ( Button.isPressed(Button.FLY_FASTER) ){ // Ctrl and Shift is pressed (Change time between waypoints)
+					if ( Button.isPressed(Button.NEXT_SEAT) ){
+						flyTime += FLY_TIME_INCR;
+					}
+					else if (flyTime - 1.f > 0){
+						flyTime -= FLY_TIME_INCR;
+					}
+					printInstructions();
+				}
+				else if (waypoints.size() > 3){ // Just Ctrl is pressed (Cycle preview cameras)
+					if ( Button.isPressed(Button.NEXT_SEAT) ){
+						if (curPreview < waypoints.size() - 1){
+							curPreview++;
+						}
+					}
+					else{
+						if (curPreview > 2){
+							curPreview--;
+						}
+					}					
+				}
+			}
+			else if ( Button.isPressed(Button.FLY_FASTER) ){ // Just Shift is pressed (Rotate)
+				rotate = true;
+				int index = getIndexOfWaypointInView(false);
+				Matrix4x4f waypointMatrix = null;
+				if (index != -1){ // If player is looking at a waypoint...
+					waypointMatrix = (Matrix4x4f) waypoints.elementAt(index);
+					// Temporarily set the SCO to the matrix of the waypoint to get it's rotation data,
+					// because SceneObjectElement doesn't have a getRotation() method and doing the math
+					// to manually rotate a rotation matrix is too friggen hard!
+					sco.setMatrix(waypointMatrix);
+					Vector3f waypointRotation = sco.getRotation();
+					if (Button.isPressed(Button.NEXT_SEAT)){
+						waypointRotation.z -= ROTATION_INCR;
+					}
+					else{
+						waypointRotation.z += ROTATION_INCR;
+					}
+					sco.setRotation(waypointRotation); // Save the new rotation back to the SCO
+					waypoints.setElementAt(sco.getMatrix(), index); // Save it's internally calculated matrix back to the waypoints Vector
+					sco.setMatrix(ORIGIN); // Move the SCO back to the origin
+				}
+			}
+			else{ // Just C or V is pressed (Place waypoints)
+				clicked = true;
+				Matrix4x4f view = new Matrix4x4f();
+				sim.getViewMatrix(view);
+				if (Button.isPressed(Button.NEXT_SEAT)){ // If a soft waypoint, put a flag in an unused part of the Matrix4x4f
+					view.setElemAt(0,3, 1.f);
+				}
+				waypoints.addElement(view);
+				curPreview = waypoints.size() - 1;
+			}
+		}
+		else if ( Button.isPressed(Button.NEXT_TRAIN) ){ // If T is pressed...
+			clicked = true;
+			if ( Button.isPressed(Button.FLY_SLOWER) ){ // If Ctrl is pressed...
+				if ( Button.isPressed(Button.FLY_FASTER) ){ // Ctrl and Shift is pressed (Toggle average fly times)
+					averageFlyTimes = !averageFlyTimes;
+					printInstructions();
+				}
+				else{ // Just Ctrl is pressed (Delete all waypoints)
+					waypoints.clear();
+					curPreview = -1;
+				}
+			}
+			else if (curPreview > -1){ // Just T is pressed (Delete waypoint in view or last waypoint)
+				waypoints.removeElement(waypoints.elementAt(getIndexOfWaypointInView(true)));
+				if (curPreview == waypoints.size()) curPreview--;
+			}
+		}
+		
+		/* Fly View Handling */
+		if (preflight){ // Show preflight countdown
+			if (timer >= 4.f){
+				countdown.setVisible(false);
+				preflight = false;
+				flying = true;
+				timer = 0.f;
+			}
+			countdown.setTextureAnimationIndex((int) Math.floor((double) timer));
+			timer = timer + tick;
+		}
+		else if (flying){ // Waypoint flights
+			if (curWaypoint == waypoints.size() - 1){ // End flight
+				flying = false;
+				postflight = true;
+				timer = 0.f;
+			}
+			else if (timer >= flyTimes[curWaypoint]){ // Next waypoint
+				timer = 0.f;
+				// Store the current camera matrix (after LERP'ing) to be used as the next flight's starting waypoint
+				// because, due to small floating point calculation errors, the current matrix will slightly differ
+				// from the true next waypoint matrix. Just using the next waypoint matrix causes a jerk in animation.
+				prevCameraMatrix = curCameraMatrix.dup();
+				curWaypoint++;
+			}
+			else{ // Flying to B waypoint
+				Matrix4x4f a = (curWaypoint == 0) ? (Matrix4x4f) waypoints.elementAt(curWaypoint) : prevCameraMatrix;
+				Matrix4x4f b = (Matrix4x4f) waypoints.elementAt(curWaypoint + 1);
+				if (isWaypointSoft(a)){
+					if (isWaypointSoft(b)){ // Soft to soft
+						Matrix4x4fMath.lerpMatrix4x4f(timer/flyTimes[curWaypoint], a, b, curCameraMatrix); // Linear: y = x
+					}
+					else{ // Soft to hard
+						Matrix4x4fMath.lerpMatrix4x4f((float) (-Math.pow((timer/flyTimes[curWaypoint])-1, 2) + 1), a, b, curCameraMatrix); // Parabolic: y = -(x-1)^2 + 1
+					}
+				}
+				else{
+					if (isWaypointSoft(b)){ // Hard to soft
+						Matrix4x4fMath.lerpMatrix4x4f((timer/flyTimes[curWaypoint])*(timer/flyTimes[curWaypoint]), a, b, curCameraMatrix); // Parabolic: y = x^2
+					}
+					else{ // Hard to hard
+						Matrix4x4fMath.lerpMatrix4x4f((float) Tools.switchRampC2((double) flyTimes[curWaypoint], 1, (double) flyTimes[curWaypoint]/2, (double) timer), a, b, curCameraMatrix); // Cubic -> Inverse Cubic
+					}
+				}
+				flyView.setCameraMatrix(curCameraMatrix);
+			}
+			
+			if (!waitForTrigger){ // If waiting for trigger, will keep timer at 0 to prevent start of flight
+				timer = timer + tick;
+			}
+		}
+		else if (postflight){ // Only used as stop-gap to check if player has left the fly view at the end of the flight
+			if (!flyView.isActive()){
+				postflight = false;
+				printInstructions();
+			}
+		}
+		else if (flyView.isActive()){ // Setup and start flight
+			timer = 0.f;
+			curWaypoint = 0;
+			sco.setElementsVisible(false);
+			if (coasterTrigger != null){
+				flying = true;
+				waitForTrigger = true;
+			}
+			else if (skipCountdown){
+				flying = true;
+			}
+			else{
+				preflight = true;
+				countdown.setMatrix((Matrix4x4f) waypoints.elementAt(0));
+				countdown.setVisible(true);
+			}
+			
+			// Setup fly times between waypoints (dependent if static or averaged)
+			float totalDist = 0.f;
+			flyTimes = new float[waypoints.size()-1];
+			for (int i = 0; averageFlyTimes && i < waypoints.size()-1; i++){ // Get total distance between waypoints if averaging fly times
+				totalDist += Matrix4x4fMath.distance((Matrix4x4f) waypoints.elementAt(i), (Matrix4x4f) waypoints.elementAt(i+1));
+			}
+			for (int i = 0; i < waypoints.size()-1; i++){ // Set fly times between waypoints (dependent if static or averaged)
+				if (averageFlyTimes){
+					flyTimes[i] = Matrix4x4fMath.distance((Matrix4x4f) waypoints.elementAt(i), (Matrix4x4f) waypoints.elementAt(i+1)) / totalDist * (flyTime * flyTimes.length); // Dist % * Total Time
+				}
+				else{
+					flyTimes[i] = flyTime;
+				}
+			}
+		}
+		if (!flyView.isActive()){ // Player is not in the fly view
+			waitForTrigger = false;
+			preflight = false;
+			flying = false;
+			postflight = false;
+			updatePreviewCameras();
+		}
+	}
+}

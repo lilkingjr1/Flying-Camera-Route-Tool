@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root>
+  <material>
+    <description>Uses default model color with simple lighting and no shadow casting.</description>
+    <renderpass>
+      <shadercore>Emission = Mul(Color, 0.35);</shadercore>
+      <transparency mode="opaque"/>
+      <linearshading/>
+      <rgbgen mode="lighting"/>
+    </renderpass>
+    <option noeditorrender="true"/>
+    <option nonsolid="true"/>
+    <option noshadowcast="true"/>
+    <option noshadowreceive="true"/>
+  </material>
+</root>

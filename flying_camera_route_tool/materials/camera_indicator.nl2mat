@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root>
+  <material>
+    <description>Indicators to help identify what type of waypoint the camera is at.</description>
+    <preview>camera_indicators/start.jpg</preview>
+    <renderpass>
+      <shadercore>tmp0 = Add(tex0, entity0);
+tmp0 = Saturate(tmp0);
+Result = tmp0;
+Emission = Mul(tmp0, 0.35);</shadercore>
+      <transparency mode="opaque"/>
+      <linearshading/>
+      <rgbgen mode="lighting"/>
+      <texunit>
+        <animmap frequency="0">
+          <map>camera_indicators/start.jpg</map>
+          <map>camera_indicators/hardA.jpg</map>
+          <map>camera_indicators/hardB.jpg</map>
+          <map>camera_indicators/softA.jpg</map>
+          <map>camera_indicators/softB.jpg</map>
+        </animmap>
+        <tcgen mode="base"/>
+      </texunit>
+    </renderpass>
+    <option noeditorrender="true"/>
+    <option nonsolid="true"/>
+    <option noshadowcast="true"/>
+    <option noshadowreceive="true"/>
+  </material>
+</root>

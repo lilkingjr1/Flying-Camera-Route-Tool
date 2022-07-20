@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root>
+  <sceneobject>
+    <model path="models/camera.dae"/>
+    <description>Tool for setting up multiple waypoints to easily record advanced flying camera shots.</description>
+    <defaultinstancename>Flying Camera Route Tool</defaultinstancename>
+    <preview>materials/display_box/display_box.jpg</preview>
+    <param allowrot="false"/>
+    <param allowscale="false"/>
+    <script>
+      <classpath>scripts</classpath>
+      <class>FlyingCameraRouteTool</class>
+      <sharedvm>true</sharedvm>
+      <resource id="LICENSE">LICENSE</resource>
+    </script>
+    <scriptparameter>
+      <type>bool</type>
+      <defaultvalue>false</defaultvalue>
+      <id>skip_countdown</id>
+      <description>Will skip the 4 second countdown before flying when entering the camera view.</description>
+      <label>Skip countdown</label>
+    </scriptparameter>
+    <scriptparameter>
+      <type>trigger</type>
+      <id>coaster_trigger</id>
+      <description>Will only start flying when the specified trigger is hit. Leave as &lt;None&gt; to automatically start the flight when entering the camera.</description>
+      <label>(Optional) Coaster Trigger to Start Flight:</label>
+    </scriptparameter>
+    <scriptparameter>
+      <type>double</type>
+      <defaultvalue>1</defaultvalue>
+      <id>fly_time_incr</id>
+      <description>Useful if you want to be more precise and increment the fly time by fractions of a second (ie. 0.5 seconds).</description>
+      <label>Fly Time Increment (Seconds):</label>
+    </scriptparameter>
+    <scriptparameter>
+      <type>double</type>
+      <defaultvalue>0</defaultvalue>
+      <id>rotation_incr</id>
+      <description>Leave as 0 to rotate the targeted waypoint Z-axis freely to any degree. Set to any degree to &quot;snap&quot; rotations in increments of that degree.</description>
+      <label>Z Rotation Increment (Degrees):</label>
+    </scriptparameter>
+    <materialpath name="blue">materials/default_simple.nl2mat</materialpath>
+    <materialpath name="camera_indicator">materials/camera_indicator.nl2mat</materialpath>
+    <materialpath name="countdown">materials/countdown_numbers.nl2mat</materialpath>
+    <materialpath name="dark_grey">materials/default_simple.nl2mat</materialpath>
+    <materialpath name="display_box">materials/display_box.nl2mat</materialpath>
+    <materialpath name="green">materials/default_simple.nl2mat</materialpath>
+    <materialpath name="material">materials/camera_indicator.nl2mat</materialpath>
+    <materialpath name="red">materials/default_simple.nl2mat</materialpath>
+  </sceneobject>
+</root>

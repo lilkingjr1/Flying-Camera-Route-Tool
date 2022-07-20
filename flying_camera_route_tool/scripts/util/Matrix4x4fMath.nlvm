@@ -1,0 +1,173 @@
+/**Matrix4x4f Math NL2 Class**
+	Class Author: David Wolfe (Red-Thirten)
+	Algorithm Authors: Martin John Baker (euclideanspace.com), Anthony (Prospero)
+	Date: 7/18/2022
+	License: CC0 1.0 Universal
+
+	Methods:
+		static void matrixToQuaternion(Matrix4x4f m, Vector4f q)
+			Converts the 3x3 rotation matrix of a Matrix4x4f to a quaternion, which will be stored in the given Vector4f.
+		
+		static void quaternionToMatrix(Vector4f q, Matrix4x4f m)
+			Converts a quaternion to a 3x3 rotation matrix, which will be stored in the given Matrix4x4f. Other values of the Matrix4x4f will not be modified.
+		
+		static float distance(Matrix4x4f mA, Matrix4x4f mB)
+			Returns the distance (in meters) between two Matrix4x4f's, based on their translation data.
+		
+		static void slerp(double t, Vector4f qa, Vector4f qb, Vector4f result)
+			Performs a spherical linear interpolation between quaternions `qa` and `qb`, and stores the resulting quaternion into `result`.
+		
+		static void lerpMatrix4x4f(float t, Matrix4x4f a, Matrix4x4f b, Matrix4x4f result)
+			Performs a linear interpolation of the translation and rotation data of Matrix4x4f `a` and `b`, and stores the results into `result`.
+			The 4th row of `result` will be a direct copy of the input Matrix4x4f's, depending on the value of `t`: t < 0.5 = a[0..3][3] ; t >= 0.5 = b[0..3][3]
+			Any scaling data of the original Matrix4x4f's will be lost because the math requires values to be normalized.
+	
+	Parameters:
+		All parameters must not be null.
+*/
+
+package util;
+
+import nlvm.math3d.Vector3f;
+import nlvm.math3d.Vector4f;
+import nlvm.math3d.Matrix4x4f;
+import nlvm.lang.Math;
+
+public class Matrix4x4fMath{
+	public static void matrixToQuaternion(Matrix4x4f m, Vector4f q){
+		float tr = m.elemAt(0,0) + m.elemAt(1,1) + m.elemAt(2,2);
+		
+		if (tr > 0){
+			float S = (float) Math.sqrt(tr + 1.0) * 2; // S = 4*qw
+			q.w = 0.25f * S;
+			q.x = (m.elemAt(2,1) - m.elemAt(1,2)) / S;
+			q.y = (m.elemAt(0,2) - m.elemAt(2,0)) / S;
+			q.z = (m.elemAt(1,0) - m.elemAt(0,1)) / S;
+		}
+		else if ( (m.elemAt(0,0) > m.elemAt(1,1)) && (m.elemAt(0,0) > m.elemAt(2,2)) ){
+			float S = (float) Math.sqrt(1.0 + m.elemAt(0,0) - m.elemAt(1,1) - m.elemAt(2,2)) * 2; // S = 4*qx
+			q.w = (m.elemAt(2,1) - m.elemAt(1,2)) / S;
+			q.x = 0.24f * S;
+			q.y = (m.elemAt(0,1) + m.elemAt(1,0)) / S;
+			q.z = (m.elemAt(0,2) + m.elemAt(2,0)) / S;
+		}
+		else if (m.elemAt(1,1) > m.elemAt(2,2)){
+			float S = (float) Math.sqrt(1.0 + m.elemAt(1,1) - m.elemAt(0,0) - m.elemAt(2,2)) * 2; // S = 4*qy
+			q.w = (m.elemAt(0,2) - m.elemAt(2,0)) / S;
+			q.x = (m.elemAt(0,1) + m.elemAt(1,0)) / S;
+			q.y = 0.25f * S;
+			q.z = (m.elemAt(1,2) + m.elemAt(2,1)) / S;
+		}
+		else{
+			float S = (float) Math.sqrt(1.0 + m.elemAt(2,2) - m.elemAt(0,0) - m.elemAt(1,1)) * 2; // S = 4*qz
+			q.w = (m.elemAt(1,0) - m.elemAt(0,1)) / S;
+			q.x = (m.elemAt(0,2) + m.elemAt(2,0)) / S;
+			q.y = (m.elemAt(1,2) + m.elemAt(2,1)) / S;
+			q.z = 0.25f * S;
+		}
+	}
+	
+	public static void quaternionToMatrix(Vector4f q, Matrix4x4f m){
+		float sqw = q.w * q.w;
+		float sqx = q.x * q.x;
+		float sqy = q.y * q.y;
+		float sqz = q.z * q.z;
+		
+		// invs (inverse square length) is only required if quaternion is not already normalized
+		float invs = 1 / (sqx + sqy + sqz + sqw);
+		m.setElemAt(0,0, ( sqx - sqy - sqz + sqw) * invs); // since sqw + sqx + sqy + sqz = 1 / invs * invs
+		m.setElemAt(1,1, (-sqx + sqy - sqz + sqw) * invs);
+		m.setElemAt(2,2, (-sqx - sqy + sqz + sqw) * invs);
+		
+		float tmp1 = q.x * q.y;
+		float tmp2 = q.z * q.w;
+		m.setElemAt(1,0, 2.f * (tmp1 + tmp2) * invs);
+		m.setElemAt(0,1, 2.f * (tmp1 - tmp2) * invs);
+		
+		tmp1 = q.x * q.z;
+		tmp2 = q.y * q.w;
+		m.setElemAt(2,0, 2.f * (tmp1 - tmp2) * invs);
+		m.setElemAt(0,2, 2.f * (tmp1 + tmp2) * invs);
+		
+		tmp1 = q.y * q.z;
+		tmp2 = q.x * q.w;
+		m.setElemAt(2,1, 2.f * (tmp1 + tmp2) * invs);
+		m.setElemAt(1,2, 2.f * (tmp1 - tmp2) * invs);
+	}
+	
+	public static float distance(Matrix4x4f mA, Matrix4x4f mB){
+		Vector3f tA = mA.getTrans();
+		Vector3f tB = mB.getTrans();
+		return tA.distance(tB);
+	}
+	
+	public static void slerp(double t, Vector4f qa, Vector4f qb, Vector4f result){
+		// Calculate angle between them
+		double cosHalfTheta = qa.w * qb.w + qa.x * qb.x + qa.y * qb.y + qa.z * qb.z;
+		if (cosHalfTheta < 0){ // addon fix
+		  qb.w = -qb.w;
+		  qb.x = -qb.x;
+		  qb.y = -qb.y;
+		  qb.z = qb.z;
+		  cosHalfTheta = -cosHalfTheta;
+		}
+		// If qa=qb or qa=-qb then theta = 0 and we can return qa
+		if (Math.abs(cosHalfTheta) >= 1.0){
+			result.w = qa.w;
+			result.x = qa.x;
+			result.y = qa.y;
+			result.z = qa.z;
+			return;
+		}
+		// Calculate temporary values
+		double halfTheta = Math.acos(cosHalfTheta);
+		double sinHalfTheta = Math.sqrt(1.0 - cosHalfTheta*cosHalfTheta);
+		// If theta = 180 degrees then result is not fully defined
+		// we could rotate around any axis normal to qa or qb
+		if (Math.abs(sinHalfTheta) < 0.001){
+			result.w = (qa.w * 0.5f + qb.w * 0.5f);
+			result.x = (qa.x * 0.5f + qb.x * 0.5f);
+			result.y = (qa.y * 0.5f + qb.y * 0.5f);
+			result.z = (qa.z * 0.5f + qb.z * 0.5f);
+			return;
+		}
+		float ratioA = (float) (Math.sin((1.0 - t) * halfTheta) / sinHalfTheta);
+		float ratioB = (float) (Math.sin(t * halfTheta) / sinHalfTheta); 
+		// Calculate Quaternion
+		result.w = (qa.w * ratioA + qb.w * ratioB);
+		result.x = (qa.x * ratioA + qb.x * ratioB);
+		result.y = (qa.y * ratioA + qb.y * ratioB);
+		result.z = (qa.z * ratioA + qb.z * ratioB);
+	}
+	
+	public static void lerpMatrix4x4f(float t, Matrix4x4f a, Matrix4x4f b, Matrix4x4f result){
+		// LERP translation
+		Vector3f aTrans = a.getTrans();
+		Vector3f bTrans = b.getTrans();
+		aTrans.lerp(t, aTrans, bTrans);
+		result.initTrans(aTrans);
+		
+		// SLERP rotation
+		Vector4f aQuat = new Vector4f();
+		Vector4f bQuat = new Vector4f();
+		Vector4f slerpQuat = new Vector4f();
+		matrixToQuaternion(a, aQuat);
+		matrixToQuaternion(b, bQuat);
+		slerp((double) t, aQuat, bQuat, slerpQuat);
+		quaternionToMatrix(slerpQuat, result);
+		
+		// Copy 4th row to result, based on t value
+		if (t < 0.5){
+			copyFourthRow(a, result);
+		}
+		else{
+			copyFourthRow(b, result);
+		}
+	}
+	
+	private static void copyFourthRow(Matrix4x4f a, Matrix4x4f b){ // Copies the 4th row of Matrix4x4f a to Matrix4x4f b
+		for (int i = 0; i < 4; i++){
+			b.setElemAt(i,3, a.elemAt(i,3));
+		}
+	}
+}

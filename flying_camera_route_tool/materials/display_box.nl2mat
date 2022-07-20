@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root>
+  <material>
+    <description>Editor display box for the Flying Camera Route Tool</description>
+    <preview>display_box/display_box.jpg</preview>
+    <renderpass>
+      <transparency mode="opaque"/>
+      <linearshading/>
+      <texunit>
+        <map>display_box/display_box.jpg</map>
+        <tcgen mode="base"/>
+      </texunit>
+    </renderpass>
+    <option norender="true"/>
+    <option nonsolid="true"/>
+    <option noshadowcast="true"/>
+    <option noshadowreceive="true"/>
+  </material>
+</root>
