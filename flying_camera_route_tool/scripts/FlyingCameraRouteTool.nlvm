@@ -150,7 +150,7 @@ public class FlyingCameraRouteTool extends Script implements TrackTriggerListene
 		}
 		if (waypoints.size() >= 1){
 			setPreviewCameraProperties(cameraStart, rayStart, (Matrix4x4f) waypoints.elementAt(0), true);
-			flyView.setEnterWarpPoint(cameraStart.getAbsoluteTranslation(), 1.f); // Update fly view start properties
+			flyView.setEnterWarpPoint(cameraStart.getAbsoluteTranslation(), 1.5f); // Update fly view start properties
 			curCameraMatrix = cameraStart.getAbsoluteMatrix();
 			flyView.setCameraMatrix(curCameraMatrix);
 		}

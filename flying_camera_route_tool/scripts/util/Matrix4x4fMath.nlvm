@@ -47,7 +47,7 @@ public class Matrix4x4fMath{
 		else if ( (m.elemAt(0,0) > m.elemAt(1,1)) && (m.elemAt(0,0) > m.elemAt(2,2)) ){
 			float S = (float) Math.sqrt(1.0 + m.elemAt(0,0) - m.elemAt(1,1) - m.elemAt(2,2)) * 2; // S = 4*qx
 			q.w = (m.elemAt(2,1) - m.elemAt(1,2)) / S;
-			q.x = 0.24f * S;
+			q.x = 0.25f * S;
 			q.y = (m.elemAt(0,1) + m.elemAt(1,0)) / S;
 			q.z = (m.elemAt(0,2) + m.elemAt(2,0)) / S;
 		}
@@ -108,7 +108,7 @@ public class Matrix4x4fMath{
 		  qb.w = -qb.w;
 		  qb.x = -qb.x;
 		  qb.y = -qb.y;
-		  qb.z = qb.z;
+		  qb.z = -qb.z;
 		  cosHalfTheta = -cosHalfTheta;
 		}
 		// If qa=qb or qa=-qb then theta = 0 and we can return qa
