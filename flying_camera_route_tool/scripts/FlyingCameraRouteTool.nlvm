@@ -120,14 +120,14 @@ public class FlyingCameraRouteTool extends Script implements TrackTriggerListene
 	private void printInstructions(){ // Prints instructions and current settings to the console
 		String averageFlyTimesStr = (averageFlyTimes) ? "On" : "Off";
 		System.err.println("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n");
-		System.out.println("\t\t\t" + SCRIPT_NAME + "  |  Fly Time: " + flyTime + "  |  Average Fly Times: " + averageFlyTimesStr);
-		System.out.println("=====================================================");
-		System.out.println("| Place Hard Waypoint: " + btnStr("c") + "  |  Place Soft Waypoint: " + btnStr("v") + "  |  Delete All Waypoints: " + btnStr("ctrl") + " + " + btnStr("t"));
-		System.out.println("| Delete last Waypoint: " + btnStr("t") + "  |  Delete specific Waypoint: Look at + " + btnStr("t"));
-		System.out.println("| Cycle preview cameras: " + btnStr("ctrl") + " + " + btnStr("c") + " or " + btnStr("v") + "  |  Roll Waypoint: Look at + " + btnStr("shift") + " + " + btnStr("c") + " or " + btnStr("v"));
+		System.out.println("\t\t\t\t\t\t\t\t\t" + SCRIPT_NAME + "  |  Fly Time: " + flyTime + "s  |  Average Fly Times: " + averageFlyTimesStr);
+		System.out.println("=====================================================================");
+		System.out.println("| Place Waypoint: " + btnStr("c") + "  |  Place No-Stop Waypoint: " + btnStr("v") + "  |  Toggle Waypoint Type: Look at + " + btnStr("shift") + " + " + btnStr("t"));
+		System.out.println("| Delete last Waypoint: " + btnStr("t") + "  |  Delete specific Waypoint: Look at + " + btnStr("t") + "  |  Delete All Waypoints: " + btnStr("ctrl") + " + " + btnStr("t"));
+		System.out.println("| Cycle Waypoint previews: " + btnStr("ctrl") + " + " + btnStr("c") + " or " + btnStr("v") + "  |  Roll Waypoint: Look at + " + btnStr("shift") + " + " + btnStr("c") + " or " + btnStr("v"));
 		System.out.println("| Change Fly Time between Waypoints: " + btnStr("ctrl") + " + " + btnStr("shift") + " + " + btnStr("c") + " or " + btnStr("v"));
 		System.out.println("| Toggle Averaging of Fly Times: " + btnStr("ctrl") + " + " + btnStr("shift") + " + " + btnStr("t"));
-		System.out.println("========== (Remember to close this console before recording) ==========");
+		System.out.println("================== (Remember to close this console before recording) ==================");
 	}
 	
 	private String btnStr(String keyNameDefault){ // Given the default key name, returns the assigned keys/buttons as a string
@@ -266,8 +266,7 @@ public class FlyingCameraRouteTool extends Script implements TrackTriggerListene
 				rotate = true;
 				int index = getIndexOfWaypointInView(false);
 				if (index != -1){ // If player is looking at a waypoint...
-					Matrix4x4f waypointMatrix = null;
-					waypointMatrix = (Matrix4x4f) waypoints.elementAt(index);
+					Matrix4x4f waypointMatrix = (Matrix4x4f) waypoints.elementAt(index);
 					bool isSoft = isWaypointSoft(waypointMatrix);
 					// Temporarily set the SCO to the matrix of the waypoint to get it's rotation data,
 					// because SceneObjectElement doesn't have a getRotation() method and doing the math
@@ -310,7 +309,20 @@ public class FlyingCameraRouteTool extends Script implements TrackTriggerListene
 					curPreview = -1;
 				}
 			}
-			else if (curPreview > -1){ // Just T is pressed (Delete waypoint in view or last waypoint)
+			else if ( Button.isPressed(Button.FLY_FASTER) ){ // Just Shift is pressed (Toggle Waypoint Softness)
+				clicked = true;
+				int index = getIndexOfWaypointInView(false);
+				if (index != -1){ // If player is looking at a waypoint...
+					Matrix4x4f waypointMatrix = (Matrix4x4f) waypoints.elementAt(index);
+					if ( isWaypointSoft(waypointMatrix) ){
+						waypointMatrix.setElemAt(0,3, 0.f);
+					}
+					else{
+						waypointMatrix.setElemAt(0,3, 1.f);
+					}
+				}
+			}
+			else if (curPreview > -1){ // Just T is pressed (Delete waypoint in view or last waypoint - Do nothing if no preview cameras)
 				waypoints.removeElement(waypoints.elementAt(getIndexOfWaypointInView(true)));
 				if (curPreview == waypoints.size()) curPreview--;
 			}

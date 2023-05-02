@@ -1,0 +1,7 @@
+# Standard NL2 project Git Ignore
+
+# NL2 park backup files
+*.nl2park_backup
+
+# NL2 package files
+*.nl2pkg
