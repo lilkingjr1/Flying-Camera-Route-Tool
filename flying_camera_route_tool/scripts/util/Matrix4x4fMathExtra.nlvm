@@ -1,4 +1,6 @@
-public static void matrixToEuler(Matrix4x4f m, Vector3f e){
+// These are not needed because NL2 already has com.nolimitscoaster.Tools.matrixToPitchHeadBankPosScale
+
+public static void matrixToEuler(Matrix4x4f m, Vector3f e){ // Works
 	// Assuming the angles are in radians.
 	if (m.elemAt(2,1) > 0.998f){ // singularity at north pole
 		e.x = (float) (Math.PI/2); // attitude
@@ -17,7 +19,7 @@ public static void matrixToEuler(Matrix4x4f m, Vector3f e){
 	e.z = (float) (Math.atan2((double) m.elemAt(0,1), (double) m.elemAt(1,1))); // heading
 }
 
-public static void eulerToMatrix(Vector3f e, Matrix4x4f m){
+public static void eulerToMatrix(Vector3f e, Matrix4x4f m){ // Doesn't work
 	// Assuming the angles are in radians.
 	float ch = (float) (Math.cos((double) e.y));
 	float sh = (float) (Math.sin((double) e.y));
